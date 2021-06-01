@@ -11,9 +11,19 @@ module.exports = async function resolveCache(req, res) {
     response = cache.get(repository);
     console.log(`Cached response of: ${repository}`);
   } else {
-    const tree = await handleGetTree(repository, true);
-    response = cache.put(repository, tree, parseInt(process.env.CACHED_TIME));
-    console.log(`New made (and now cached) response of: ${repository}`);
+    await handleGetTree(repository, true).then((res) => {
+      if (res) {
+        response = cache.put(
+          repository,
+          res,
+          parseInt(process.env.CACHED_TIME)
+        );
+        console.log(`New made (and now cached) response of: ${repository}`);
+      } else {
+        console.log(`A problem was found while fetching ${repository}`);
+        return null;
+      }
+    });
   }
 
   res.send(response);

@@ -39,10 +39,10 @@ module.exports = async function getTree(url, isRepoUrl) {
       })
     )
     .catch((error) => {
-      console.log(
+      /* console.log(
         "Oops, error... most likely the repo is private, I probably have a reason for that.",
         error
-      );
+      ); */
     });
 
   const promisesArray = [];
