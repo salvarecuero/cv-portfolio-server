@@ -5,6 +5,10 @@ const resolveCache = require("./handlers/resolveCache");
 
 app.use(cors());
 
+app.get("/", (req, res) => {
+  res.send("OK");
+});
+
 app.get("/api/get-tree/", resolveCache);
 
 app.listen(process.env.PORT || 3500, () => {
