@@ -11,7 +11,7 @@ module.exports = async function resolveCache(req, res) {
     response = cache.get(repository);
     console.log(`Cached response of: ${repository}`);
   } else {
-    await handleGetTree(repository, true).then((res) => {
+    await handleGetTree(repository).then((res) => {
       if (res) {
         response = cache.put(
           repository,

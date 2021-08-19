@@ -1,63 +1,134 @@
 const fetch = require("node-fetch");
 require("dotenv").config();
 
-module.exports = async function getTree(url, isRepoUrl) {
-  const toFetchUrl = isRepoUrl
-    ? `https://api.github.com/repos/${url.split(".com/")[1]}/contents/`
-    : url;
+module.exports = async function getGithubTreeObject(repoUrl) {
+  const defaultErrMsg = `Error while fetching ${repoUrl} Github tree :(`;
+  const ownerAndRepoName = new URL(repoUrl).pathname;
 
-  let data = await fetch(toFetchUrl, {
-    headers: {
-      Authorization: process.env.GITHUB_TOKEN,
-    },
-  })
-    .then((res) => {
-      if (!res.ok) {
-        throw Error(res.statusText);
+  const commitFilesAndFolders = async (sha, branchName) => {
+    const finalTree = await fetch(
+      `https://api.github.com/repos${ownerAndRepoName}/git/trees/${sha}?recursive=true`,
+      {
+        headers: {
+          Authorization: process.env.GITHUB_TOKEN,
+        },
       }
+    )
+      .then((res) => {
+        if (!res) return Error(defaultErrMsg);
+        return res.json();
+      })
+      .then((commitData) => {
+        return parseCommitData(commitData.tree, ownerAndRepoName, branchName);
+      })
+      .catch((err) => console.log(err));
+
+    return await finalTree;
+  };
+
+  return await fetch(
+    `https://api.github.com/repos${ownerAndRepoName}/branches`,
+    {
+      headers: {
+        Authorization: process.env.GITHUB_TOKEN,
+      },
+    }
+  )
+    .then((res) => {
+      if (!res) return Error(defaultErrMsg);
       return res.json();
     })
-    .then((fetchedData) =>
-      fetchedData.map((item) => {
-        if (item["type"] === "file") {
-          return {
-            name: item.name,
-            type: item.type,
-            kbSize: (item.size / Math.pow(1024, 1)).toFixed(2),
-            html_url: item.html_url,
-          };
-        } else if (item["type"] === "dir") {
-          return {
-            name: item.name,
-            type: item.type,
-            html_url: item.html_url,
-            children: item.url,
-          };
-        } else {
-          return null;
-        }
-      })
-    )
-    .catch((error) => {
-      console.log(
-        "Oops, error... most likely the repo is private, I probably have a reason for that.",
-        error
-      );
+    .then(async (branchesData) => {
+      if (branchesData.message?.startsWith("API rate limit exceeded"))
+        throw Error(branchesData.message);
+      const sha = branchesData[0].commit.sha;
+      const branchName = branchesData[0].name;
+      return await commitFilesAndFolders(sha, branchName);
+    })
+    .catch((err) => console.log(err));
+};
+
+const parseCommitData = (commitData, ownerAndRepoName, branchName) => {
+  let repoTree = [];
+  let rootTrees = commitData.filter(
+    (element) => element.type === "tree" && !element.path.match("/")
+  );
+  let rootElements = commitData
+    .filter((element) => element.type !== "tree" && !element.path.match("/"))
+    .map((element) => {
+      delete element.mode;
+      delete element.sha;
+      element.name = getElementName(element.path);
+      element.kbSize = getElementSize(element.size);
+      element.html_url = getElementURL(element, ownerAndRepoName, branchName);
+      return element;
     });
 
-  const promisesArray = [];
-  const itemsArray = [];
-  data?.forEach((item) => {
-    if (item["type"] === "dir") {
-      const promise = getTree(item.children);
-      promisesArray.push(promise);
-      itemsArray.push(item);
-    }
-  });
+  repoTree = rootTrees.map((tree) =>
+    createDirectoryTree(tree, commitData, ownerAndRepoName, branchName)
+  );
+  return repoTree.concat(rootElements);
+};
 
-  const promiseData = await Promise.all(promisesArray);
+const createDirectoryTree = (
+  directory,
+  commitData,
+  ownerAndRepoName,
+  branchName
+) => {
+  const directoryPath = `${directory.path}/`;
 
-  itemsArray.forEach((item, index) => (item.children = promiseData[index]));
+  const allDirectoryPathContent = commitData.filter((element) =>
+    element.path.startsWith(directoryPath)
+  );
 
-  return data;
+  let onlyDirectoryPathContent = allDirectoryPathContent
+    .filter(
+      (element) =>
+        element.path.split("/").length === directoryPath.split("/").length
+    )
+    .map((element) => {
+      if (element.type === "tree") {
+        return createDirectoryTree(
+          element,
+          commitData,
+          ownerAndRepoName,
+          branchName
+        );
+      } else {
+        element.name = getElementName(element.path);
+        element.kbSize = getElementSize(element.size);
+        element.html_url = getElementURL(element, ownerAndRepoName, branchName);
+        delete element.mode;
+        delete element.sha;
+        return element;
+      }
+    });
+
+  delete directory.mode;
+  delete directory.sha;
+
+  return {
+    ...directory,
+    name: getElementName(directory.path),
+    html_url: getElementURL(directory, ownerAndRepoName, branchName),
+    children: onlyDirectoryPathContent,
+  };
+};
+
+// Utils
+const getElementName = (path) => {
+  return path.substring(path.lastIndexOf("/") + 1);
+};
+
+const getElementSize = (size) => {
+  return (size / Math.pow(1024, 1)).toFixed(2);
+};
+
+const getElementURL = (element, ownerAndRepoName, branchName) => {
+  if (element.type === "tree") {
+    return `https://github.com${ownerAndRepoName}/tree/${element.path}`;
+  } else {
+    return `https://github.com${ownerAndRepoName}/blob/${branchName}/${element.path}`;
+  }
 };
