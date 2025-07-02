@@ -41,6 +41,7 @@ module.exports = async function getGithubTreeObject(repoUrl) {
     .then(async (branchesData) => {
       if (branchesData.message?.startsWith("API rate limit exceeded"))
         throw Error(branchesData.message);
+
       const sha = branchesData[0].commit.sha;
       const branchName = branchesData[0].name;
       return await commitFilesAndFolders(sha, branchName);
