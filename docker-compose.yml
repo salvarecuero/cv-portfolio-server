@@ -1,0 +1,14 @@
+  GNU nano 7.2                                       docker-compose.yml                                                 # docker-compose.yml for cv-portfolio-api
+version: '3.8'
+
+services:
+  api:
+    image: cv-portfolio-server
+    ports:
+      - "8001:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      CACHED_TIME: 300000
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+    restart: always # Always restart the container if it stops for any reason
